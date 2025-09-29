@@ -1,30 +1,37 @@
 section .data
-	msg db "1337", 10
-	len equ $ -msg
+    msg db "1337", 10      ; "1337" + newline
+    len equ $ - msg        ; longueur du message
 
 section .text
-	global _start
+    global _start
 
-_start: 
-
-	pop rdi
-	cmp rdi, 2
-	jne exit_error
-
-	pop rdi
-
-	pop rdi
-
-	xor rax, rax
-	xor rcx, rcx
+_start:
+    ; Vérifier qu'il y a exactement 1 argument
+    pop rdi                ; rdi = argc
+    cmp rdi, 2
+    jne exit_bad_input     ; si argc != 2, mauvaise entrée
+    
+    ; Sauter argv[0]
+    pop rdi
+    
+    ; Récupérer argv[1]
+    pop rdi                ; rdi = pointeur vers argv[1]
+    
+    ; Convertir la chaîne en nombre
+    xor rax, rax           ; rax = 0 (résultat)
+    xor rcx, rcx           ; rcx = 0 (caractère temporaire)
+    
 convert_loop:
-	mov cl, [rdi]
-	cmp cl, 0
-	je check_even
-	cmp cl, 0
-	jl exit_error
-cmp cl, '9'
-    jg exit_error
+    mov cl, [rdi]          ; lire un caractère
+    cmp cl, 0              ; fin de chaîne?
+    je check_even
+    cmp cl, 10             ; newline?
+    je check_even
+    cmp cl, '0'            ; vérifier si c'est un chiffre
+    jl exit_bad_input
+    cmp cl, '9'
+    jg exit_bad_input
+    
     sub cl, '0'            ; convertir ASCII en nombre
     imul rax, 10           ; rax = rax * 10
     add rax, rcx           ; rax = rax + chiffre
@@ -53,4 +60,10 @@ exit_error:
     ; Sortir avec erreur (code 1)
     mov rax, 60            ; syscall exit
     mov rdi, 1             ; code de sortie 1
+    syscall
+
+exit_bad_input:
+    ; Sortir avec erreur pour mauvaise entrée (code 2)
+    mov rax, 60            ; syscall exit
+    mov rdi, 2             ; code de sortie 2
     syscall
