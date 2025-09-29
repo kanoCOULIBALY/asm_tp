@@ -20,12 +20,12 @@ _start:
     ; Comparer le premier caractère avec '4'
     mov al, [input]
     cmp al, '4'
-    jne exit_program       ; si différent, sortir
+    jne exit_error         ; si différent, sortir avec erreur
     
     ; Comparer le deuxième caractère avec '2'
     mov al, [input + 1]
     cmp al, '2'
-    jne exit_program       ; si différent, sortir
+    jne exit_error         ; si différent, sortir avec erreur
     
     ; Vérifier que le 3ème caractère est newline ou null
     mov al, [input + 2]
@@ -33,7 +33,7 @@ _start:
     je print_1337
     cmp al, 0              ; null
     je print_1337
-    jmp exit_program
+    jmp exit_error
 
 print_1337:
     ; Afficher "1337"
@@ -42,9 +42,14 @@ print_1337:
     mov rsi, msg           ; adresse du message
     mov rdx, len           ; longueur
     syscall
-
-exit_program:
-    ; Sortir avec succès
+    
+    ; Sortir avec succès (code 0)
     mov rax, 60            ; syscall exit
     mov rdi, 0             ; code de sortie 0
+    syscall
+
+exit_error:
+    ; Sortir avec erreur (code 1)
+    mov rax, 60            ; syscall exit
+    mov rdi, 1             ; code de sortie 1
     syscall
