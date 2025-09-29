@@ -6,16 +6,13 @@ section .text
     global _start
 
 _start:
-    ; Lire argc
-    pop rbx                ; rbx = argc
+    ; argc est au sommet de la pile
+    mov rbx, [rsp]          ; rbx = argc
     cmp rbx, 2
     jne exit_bad_input
 
-    ; Sauter argv[0]
-    pop rdi
-
-    ; Récupérer argv[1]
-    pop rdi                ; rdi = pointeur vers argv[1]
+    ; argv[1] est à [rsp+16] (argv[0] = [rsp+8])
+    mov rdi, [rsp+16]       ; pointeur vers argv[1]
 
     ; Convertir la chaîne en nombre
     xor rax, rax
