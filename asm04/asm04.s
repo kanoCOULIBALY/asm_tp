@@ -1,69 +1,72 @@
 section .data
     msg db "1337", 10      ; "1337" + newline
-    len equ $ - msg        ; longueur du message
+    len equ $ - msg        ; length of the message
 
 section .text
     global _start
 
 _start:
-    ; Vérifier qu'il y a exactement 1 argument
+    ; Check if there is exactly 1 argument (argc == 2)
     pop rdi                ; rdi = argc
     cmp rdi, 2
-    jne exit_bad_input     ; si argc != 2, mauvaise entrée
-    
-    ; Sauter argv[0]
+    jne exit_bad_input     ; if argc != 2, bad input
+
+    ; Skip argv[0]
     pop rdi
-    
-    ; Récupérer argv[1]
-    pop rdi                ; rdi = pointeur vers argv[1]
-    
-    ; Convertir la chaîne en nombre
-    xor rax, rax           ; rax = 0 (résultat)
-    xor rcx, rcx           ; rcx = 0 (caractère temporaire)
-    
+
+    ; Get argv[1]
+    pop rdi                ; rdi = pointer to argv[1]
+
+    ; Check if the string is empty
+    mov al, [rdi]          ; read first character
+    cmp al, 0              ; is it null?
+    je exit_bad_input      ; if empty string, bad input
+
+    ; Convert string to number
+    xor rax, rax           ; rax = 0 (result)
+    xor rcx, rcx           ; rcx = 0 (temporary character)
+
 convert_loop:
-    mov cl, [rdi]          ; lire un caractère
-    cmp cl, 0              ; fin de chaîne?
-    je check_even
-    cmp cl, 10             ; newline?
-    je check_even
-    cmp cl, '0'            ; vérifier si c'est un chiffre
-    jl exit_bad_input
+    mov cl, [rdi]          ; read a character
+    cmp cl, 0              ; end of string?
+    je check_even          ; if null, done with conversion
+    cmp cl, '0'            ; check if it's a digit
+    jl exit_bad_input      ; if < '0', bad input
     cmp cl, '9'
-    jg exit_bad_input
-    
-    sub cl, '0'            ; convertir ASCII en nombre
+    jg exit_bad_input      ; if > '9', bad input
+
+    sub cl, '0'            ; convert ASCII to number
     imul rax, 10           ; rax = rax * 10
-    add rax, rcx           ; rax = rax + chiffre
-    inc rdi                ; caractère suivant
+    add rax, rcx           ; rax = rax + digit
+    inc rdi                ; next character
     jmp convert_loop
 
 check_even:
-    ; Tester si le nombre est pair (bit 0 = 0)
-    test rax, 1            ; tester le bit de poids faible
-    jnz exit_error         ; si bit = 1, nombre impair -> erreur
+    ; Test if the number is even (least significant bit = 0)
+    test rax, 1            ; test the least significant bit
+    jnz exit_error         ; if bit = 1, odd number -> error
 
 print_1337:
-    ; Afficher "1337"
-    mov rax, 1             ; syscall write
-    mov rdi, 1             ; stdout
-    mov rsi, msg           ; adresse du message
-    mov rdx, len           ; longueur
+    ; Print "1337"
+    mov rax, 1             ; syscall: write
+    mov rdi, 1             ; file descriptor: stdout
+    mov rsi, msg           ; address of message
+    mov rdx, len           ; length of message
     syscall
-    
-    ; Sortir avec succès (code 0)
-    mov rax, 60            ; syscall exit
-    mov rdi, 0             ; code de sortie 0
+
+    ; Exit with success (code 0)
+    mov rax, 60            ; syscall: exit
+    mov rdi, 0             ; exit code 0
     syscall
 
 exit_error:
-    ; Sortir avec erreur (code 1)
-    mov rax, 60            ; syscall exit
-    mov rdi, 1             ; code de sortie 1
+    ; Exit with error (code 1)
+    mov rax, 60            ; syscall: exit
+    mov rdi, 1             ; exit code 1
     syscall
 
 exit_bad_input:
-    ; Sortir avec erreur pour mauvaise entrée (code 2)
-    mov rax, 60            ; syscall exit
-    mov rdi, 2             ; code de sortie 2
+    ; Exit with error for bad input (code 2)
+    mov rax, 60            ; syscall: exit
+    mov rdi, 2             ; exit code 2
     syscall
