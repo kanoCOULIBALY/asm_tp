@@ -4,9 +4,9 @@ section .text
 _start:
     pop     rdi         ; argc
     cmp     rdi, 2
-    jne     invalid     
+    jne     invalid
 
-    add     rsp, 8      
+    add     rsp, 8
     mov     rsi, [rsp]  ; argv[1]
 
     ; Vérifier si le shellcode commence par \x
@@ -21,35 +21,35 @@ _start:
     mov     rax, 9
     xor     rdi, rdi
     mov     rsi, 4096
-    mov     rdx, 7      
-    mov     r10, 34     
+    mov     rdx, 7
+    mov     r10, 34
     mov     r8, -1
     xor     r9, r9
     syscall
 
     test    rax, rax
-    js      invalid    
+    js      invalid
 
-    mov     r12, rax    
-    mov     rdi, rax    
-    mov     rsi, [rsp]  
+    mov     r12, rax
+    mov     rdi, rax
+    mov     rsi, [rsp]
 
     call    parse_shellcode
     test    rax, rax
-    jz      invalid     
+    jz      invalid
 
-    jmp     r12         
+    jmp     r12
 
 invalid:
     mov     rdi, 1
-    mov     rax, 60     
+    mov     rax, 60
     syscall
 
 parse_shellcode:
     push    rbx
-    xor     rax, rax    
-    xor     rcx, rcx    
-    xor     rbx, rbx    
+    xor     rax, rax
+    xor     rcx, rcx
+    xor     rbx, rbx
 .loop:
     mov     al, [rsi + rcx]
     test    al, al
@@ -65,7 +65,7 @@ parse_shellcode:
     mov     al, [rsi + rcx]
     cmp     al, 'x'
     jne     invalid
-    add     rcx, 3      
+    add     rcx, 3
     mov     al, [rsi + rcx - 2]
     mov     ah, [rsi + rcx - 1]
     call    hex2bin
@@ -73,7 +73,7 @@ parse_shellcode:
     inc     rbx
     jmp     .loop
 .done:
-    mov     rax, 1      
+    mov     rax, 1
     pop     rbx
     ret
 
