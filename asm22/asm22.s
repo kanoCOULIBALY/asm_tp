@@ -1,153 +1,184 @@
-; asm22 - Version simplifiée avec uniquement des syscalls
 section .data
-    err_msg      db "Usage: ./asm22 [binary_file]", 10, 0
-    ok_msg       db "Fichier packagé créé", 10, 0
+    err_usage    db "Usage: ./asm22 [binary_file]", 10
+    err_usage_len equ $ - err_usage
+    err_open     db "Erreur ouverture fichier", 10
+    err_open_len equ $ - err_open
+    err_read     db "Erreur lecture fichier", 10
+    err_read_len equ $ - err_read
+    ok_msg       db "Fichier package cree", 10
+    ok_msg_len   equ $ - ok_msg
     suffix       db "_packed", 0
-    
-    stat_buf     times 144 db 0
     
 section .bss
     filename     resb 256
     packname     resb 256
     file_buf     resb 1048576
-    out_buf      resb 2097152
-
+    
 section .text
     global _start
 
 _start:
-    ; Récupérer les arguments
-    pop rax                    ; argc
-    cmp rax, 2
-    jne error
+    pop rdi
+    cmp rdi, 2
+    jne error_usage
     
-    pop rax                    ; Ignorer argv[0]
-    pop rax                    ; argv[1] - nom du fichier
+    pop rsi
+    pop rsi
     
-    ; Copier le nom du fichier
-    lea rdi, [filename]        ; destination
-    mov rsi, rax               ; source (argv[1])
+    mov r13, rsi
+    lea rdi, [rel filename]
     call copy_str
     
-    ; Créer le nom du fichier de sortie
-    lea rdi, [packname]        ; destination
-    lea rsi, [filename]        ; source
+    lea rdi, [rel packname]
+    lea rsi, [rel filename]
     call copy_str
     
-    lea rdi, [packname]
-    lea rsi, [suffix]
+    lea rdi, [rel packname]
+    lea rsi, [rel suffix]
     call append_str
     
-    ; Ouvrir le fichier source
-    mov rax, 2                 ; open
-    lea rdi, [filename]
-    xor rsi, rsi               ; O_RDONLY
+    mov rax, 2
+    lea rdi, [rel filename]
+    xor rsi, rsi
     xor rdx, rdx
     syscall
     
-    test rax, rax
-    js error
+    cmp rax, 0
+    jl error_open
     
-    mov rbx, rax               ; fd
+    mov r15, rax
     
-    ; Lire le fichier
-    mov rax, 0                 ; read
-    mov rdi, rbx
-    lea rsi, [file_buf]
-    mov rdx, 1048576           ; max size
+    mov rax, 0
+    mov rdi, r15
+    lea rsi, [rel file_buf]
+    mov rdx, 1048576
     syscall
     
-    test rax, rax
-    js close_exit
+    cmp rax, 0
+    jle error_read
     
-    mov r12, rax               ; taille lue
+    mov r12, rax
     
-    ; Fermer le fichier
-    mov rax, 3                 ; close
-    mov rdi, rbx
+    mov rax, 3
+    mov rdi, r15
     syscall
     
-    ; Créer fichier de sortie (très simple)
-    mov rax, 2                 ; open
-    lea rdi, [packname]
-    mov rsi, 577               ; O_WRONLY | O_CREAT | O_TRUNC
-    mov rdx, 0755q             ; permissions
+    mov rax, 2
+    lea rdi, [rel packname]
+    mov rsi, 577
+    mov rdx, 0755o
     syscall
     
-    test rax, rax
-    js error
+    cmp rax, 0
+    jl error_open
     
-    mov rbx, rax               ; fd
+    mov r15, rax
     
-    ; Écrire le même contenu (sans packing pour test)
-    mov rax, 1                 ; write
-    mov rdi, rbx
-    lea rsi, [file_buf]
+    mov rax, 1
+    mov rdi, r15
+    lea rsi, [rel file_buf]
     mov rdx, r12
     syscall
     
-    ; Fermer
-    mov rax, 3                 ; close
-    mov rdi, rbx
+    cmp rax, 0
+    jl error_write
+    
+    mov rax, 3
+    mov rdi, r15
     syscall
     
-    ; Message de succès
-    mov rax, 1                 ; write
-    mov rdi, 1                 ; stdout
-    lea rsi, [ok_msg]
-    mov rdx, 21                ; longueur
+    mov rax, 90
+    lea rdi, [rel packname]
+    mov rsi, 0755o
     syscall
     
-    ; Succès
-    xor rdi, rdi               ; code 0
-    jmp exit
-
-error:
-    mov rax, 1                 ; write
-    mov rdi, 2                 ; stderr
-    lea rsi, [err_msg]
-    mov rdx, 35                ; longueur
+    mov rax, 1
+    mov rdi, 1
+    lea rsi, [rel ok_msg]
+    mov rdx, ok_msg_len
     syscall
     
-    mov rdi, 1                 ; code 1
-    jmp exit
+    xor rdi, rdi
+    jmp do_exit
 
-close_exit:
-    mov rax, 3                 ; close
-    mov rdi, rbx
+error_usage:
+    mov rax, 1
+    mov rdi, 2
+    lea rsi, [rel err_usage]
+    mov rdx, err_usage_len
     syscall
-    mov rdi, 1                 ; code 1
+    mov rdi, 1
+    jmp do_exit
 
-exit:
-    mov rax, 60                ; exit
+error_open:
+    mov rax, 1
+    mov rdi, 2
+    lea rsi, [rel err_open]
+    mov rdx, err_open_len
+    syscall
+    mov rdi, 1
+    jmp do_exit
+
+error_read:
+    mov rax, 3
+    mov rdi, r15
+    syscall
+    
+    mov rax, 1
+    mov rdi, 2
+    lea rsi, [rel err_read]
+    mov rdx, err_read_len
+    syscall
+    mov rdi, 1
+    jmp do_exit
+
+error_write:
+    mov rax, 3
+    mov rdi, r15
+    syscall
+    mov rdi, 1
+    jmp do_exit
+
+do_exit:
+    mov rax, 60
     syscall
 
-; Fonctions utilitaires
 copy_str:
+    push rax
+    push rcx
     xor rcx, rcx
 .loop:
     mov al, [rsi + rcx]
     mov [rdi + rcx], al
-    inc rcx
     test al, al
-    jnz .loop
+    jz .done
+    inc rcx
+    jmp .loop
+.done:
+    pop rcx
+    pop rax
     ret
 
 append_str:
-    xor rcx, rcx
+    push rax
+    push rbx
+    mov rbx, rdi
 .find_end:
-    mov al, [rdi + rcx]
-    test al, al
-    jz .append
-    inc rcx
+    cmp byte [rdi], 0
+    je .found_end
+    inc rdi
     jmp .find_end
-.append:
-    xor rdx, rdx
-.loop:
-    mov al, [rsi + rdx]
-    mov [rdi + rcx], al
-    inc rcx
-    inc rdx
+.found_end:
+.copy:
+    mov al, [rsi]
+    mov [rdi], al
     test al, al
-    jnz .loop
+    jz .done
+    inc rsi
+    inc rdi
+    jmp .copy
+.done:
+    mov rdi, rbx
+    pop rbx
+    pop rax
     ret
