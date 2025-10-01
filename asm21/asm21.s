@@ -2,139 +2,152 @@ section .text
     global _start
 
 _start:
-    pop     rdi         ; argc
+    ; Vérifier argc == 2
+    pop     rdi         
     cmp     rdi, 2
-    jne     invalid
-    add     rsp, 8
-    mov     rsi, [rsp]  ; argv[1]
+    jne     exit_error
     
-    ; Vérifier si le shellcode commence par \x
-    mov     al, [rsi]
-    cmp     al, '\'
-    jne     invalid
-    mov     al, [rsi + 1]
-    cmp     al, 'x'
-    jne     invalid
+    add     rsp, 8      ; Skip argv[0]
+    pop     rsi         ; rsi = argv[1] (le shellcode string)
     
-    ; mmap executable memory
-    mov     rax, 9          ; sys_mmap
-    xor     rdi, rdi        ; addr = NULL
-    mov     rsi, 4096       ; length
-    mov     rdx, 7          ; prot = PROT_READ | PROT_WRITE | PROT_EXEC
-    mov     r10, 34         ; flags = MAP_PRIVATE | MAP_ANONYMOUS
-    mov     r8, -1          ; fd = -1
-    xor     r9, r9          ; offset = 0
+    ; mmap pour créer une zone mémoire exécutable
+    mov     rax, 9              ; sys_mmap
+    xor     rdi, rdi            ; addr = NULL
+    mov     rsi, 4096           ; length = 4096
+    mov     rdx, 7              ; prot = PROT_READ | PROT_WRITE | PROT_EXEC
+    mov     r10, 34             ; flags = MAP_PRIVATE | MAP_ANONYMOUS (0x22)
+    mov     r8, -1              ; fd = -1
+    xor     r9, r9              ; offset = 0
     syscall
     
-    test    rax, rax
-    js      invalid
+    ; Vérifier si mmap a réussi
+    cmp     rax, 0
+    jl      exit_error
     
-    mov     r12, rax        ; Sauvegarder l'adresse mmap
-    mov     rdi, rax        ; Destination
-    mov     rsi, [rsp]      ; Source (argv[1])
+    ; Sauvegarder l'adresse mmap
+    mov     r12, rax            ; r12 = adresse de la zone exécutable
+    
+    ; Parser le shellcode de argv[1] vers la zone mmap
+    mov     rdi, r12            ; destination
+    mov     rsi, [rsp - 8]      ; source = argv[1]
     call    parse_shellcode
     
+    ; Vérifier si le parsing a réussi
     test    rax, rax
-    jz      invalid
+    jz      exit_error
     
     ; Exécuter le shellcode
-    jmp     r12
+    call    r12
 
-invalid:
-    mov     rax, 60         ; sys_exit
-    mov     rdi, 1          ; status = 1
+exit_error:
+    mov     rax, 60             ; sys_exit
+    mov     rdi, 1              ; status = 1
     syscall
 
 parse_shellcode:
     push    rbx
     push    r13
-    xor     rbx, rbx        ; Index destination
-    xor     rcx, rcx        ; Index source
+    push    r14
+    
+    xor     rbx, rbx            ; index destination
+    xor     rcx, rcx            ; index source
     
 .loop:
-    mov     al, [rsi + rcx]
-    test    al, al
+    movzx   eax, byte [rsi + rcx]
+    test    al, al              ; fin de chaîne ?
     jz      .done
     
-    cmp     al, '\'
-    je      .escape
+    cmp     al, '\'             ; début d'escape ?
+    je      .parse_hex
     
-    ; Caractère normal
+    ; Caractère normal (ne devrait pas arriver avec un vrai shellcode)
     mov     [rdi + rbx], al
     inc     rbx
     inc     rcx
     jmp     .loop
     
-.escape:
+.parse_hex:
     inc     rcx
-    mov     al, [rsi + rcx]
-    cmp     al, 'x'
-    jne     .invalid
+    movzx   eax, byte [rsi + rcx]
+    cmp     al, 'x'             ; vérifier \x
+    jne     .error
     
+    ; Lire les 2 caractères hexa
     inc     rcx
-    ; Lire premier digit hex
-    mov     al, [rsi + rcx]
+    movzx   eax, byte [rsi + rcx]
     test    al, al
-    jz      .invalid
-    call    hex2val
-    shl     al, 4
-    mov     r13b, al        ; Sauvegarder les 4 bits hauts
+    jz      .error
+    
+    call    hex_char_to_value
+    cmp     al, 0xFF            ; erreur de conversion ?
+    je      .error
+    
+    shl     al, 4               ; décaler de 4 bits
+    mov     r13b, al            ; sauvegarder
     
     inc     rcx
-    ; Lire second digit hex
-    mov     al, [rsi + rcx]
+    movzx   eax, byte [rsi + rcx]
     test    al, al
-    jz      .invalid
-    call    hex2val
-    or      al, r13b        ; Combiner avec les 4 bits hauts
+    jz      .error
     
-    ; Écrire le byte
-    mov     [rdi + rbx], al
+    call    hex_char_to_value
+    cmp     al, 0xFF
+    je      .error
+    
+    or      al, r13b            ; combiner les 2 nibbles
+    mov     [rdi + rbx], al     ; écrire le byte
     inc     rbx
     inc     rcx
     jmp     .loop
     
-.invalid:
-    xor     rax, rax
+.error:
+    xor     rax, rax            ; retourner 0 (échec)
+    pop     r14
     pop     r13
     pop     rbx
     ret
     
 .done:
-    mov     rax, 1          ; Succès
+    mov     rax, 1              ; retourner 1 (succès)
+    pop     r14
     pop     r13
     pop     rbx
     ret
 
-hex2val:
-    ; Convertir caractère hex (dans al) en valeur 0-15
+hex_char_to_value:
+    ; Convertir un caractère hexa en valeur 0-15
+    ; Entrée: al = caractère
+    ; Sortie: al = valeur (ou 0xFF si erreur)
+    
     cmp     al, '0'
-    jb      .invalid
+    jb      .error
     cmp     al, '9'
-    jbe     .digit
+    jbe     .is_digit
     
     cmp     al, 'A'
-    jb      .invalid
+    jb      .error
     cmp     al, 'F'
-    jbe     .upper
+    jbe     .is_upper
     
     cmp     al, 'a'
-    jb      .invalid
+    jb      .error
     cmp     al, 'f'
-    jbe     .lower
+    jbe     .is_lower
     
-.invalid:
-    xor     al, al
+.error:
+    mov     al, 0xFF
     ret
     
-.digit:
+.is_digit:
     sub     al, '0'
     ret
     
-.upper:
-    sub     al, 'A' - 10
+.is_upper:
+    sub     al, 'A'
+    add     al, 10
     ret
     
-.lower:
-    sub     al, 'a' - 10
+.is_lower:
+    sub     al, 'a'
+    add     al, 10
     ret
